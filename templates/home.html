@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home</title>
+</head>
+<body>
+    <h2>Xin chào {{ username }}!</h2>
+    <h2>Tải lên PDF và chữ ký</h2>
+    <form action="/home" method="POST" enctype="multipart/form-data">
+        <input type="file" name="pdf" accept="application/pdf" required><br>
+        <!-- <input type="file" name="signature" accept="image/*" required><br> -->
+        <button type="submit">Tải lên</button>
+    </form>
+    <a href="{{ url_for('login') }}">Đăng xuất</a>
+</body>
+</html>
