@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ký PDF với vị trí tùy chỉnh</title>
+    <script>
+        function setSignaturePosition(event) {
+            let rect = event.target.getBoundingClientRect();
+            let x = event.clientX - rect.left;
+            let y = event.clientY - rect.top;
+            document.getElementById("x_pos").value = x;
+            document.getElementById("y_pos").value = y;
+        }
+
+        function submitSignature() {
+            let x = document.getElementById("x_pos").value;
+            let y = document.getElementById("y_pos").value;
+
+            fetch("{{ url_for('sign_pdf') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ x: x, y: y })
+            }).then(response => response.blob())
+              .then(blob => {
+                  let link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.download = "signed_custom.pdf";
+                  link.click();
+              });
+        }
+    </script>
+</head>
+<body>
+    <h2>Xin chào {{ username }}! Hãy chọn vị trí ký</h2>
+
+    {% if pdf_url %}
+        <embed src="{{ pdf_url }}" type="application/pdf" width="600" height="800" onclick="setSignaturePosition(event)">
+        <br>
+        <input type="hidden" id="x_pos">
+        <input type="hidden" id="y_pos">
+        <button onclick="submitSignature()">Xác nhận ký</button>
+    {% else %}
+        <form method="POST" enctype="multipart/form-data">
+            <label>Chọn file PDF:</label>
+            <input type="file" name="pdf" accept="application/pdf" required>
+            <br><br>
+            <button type="submit">Tải lên</button>
+        </form>
+    {% endif %}
+
+    <br>
+    <a href="{{ url_for('home') }}">Quay lại</a>
+</body>
+</html>

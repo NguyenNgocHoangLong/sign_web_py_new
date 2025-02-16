@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, jsonify
 import sqlite3
 import os
 import datetime
@@ -67,29 +67,34 @@ def login():
                 return redirect(url_for('home'))
     return render_template('login.html')
 
-@app.route('/home', methods=['GET', 'POST'])
-
+@app.route('/home')
 def home():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    return render_template("home.html", username=session['username'])
+
+@app.route('/upload1', methods=['GET', 'POST'])
+def upload1():
     if 'username' not in session:
         return redirect(url_for('login'))
     
     if request.method == "POST":
         if "pdf" not in request.files:
             flash("Vui lòng tải lên PDF!", "danger")
-            return redirect(url_for("home"))
+            return redirect(url_for("upload1"))
 
         pdf_file = request.files["pdf"]
 
         if pdf_file.filename == "":
             flash("Tên tệp không hợp lệ!", "danger")
-            return redirect(url_for("home"))
+            return redirect(url_for("upload1"))
 
         pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(pdf_file.filename))
         pdf_file.save(pdf_path)
         
         if not session.get('signature'):
             flash("Người dùng chưa có chữ ký trong hệ thống!", "danger")
-            return redirect(url_for("home"))
+            return redirect(url_for("upload1"))
 
         output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_" + pdf_file.filename)
         position = get_signature_position(session['position'])
@@ -97,14 +102,43 @@ def home():
 
         return send_file(output_pdf, as_attachment=True)
     
-    return render_template("home.html", username=session['username'])
+    return render_template("upload1.html", username=session['username'])
+
+@app.route('/upload2', methods=['GET', 'POST'])
+def upload2():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == "POST":
+        if "pdf" not in request.files:
+            flash("Vui lòng tải lên PDF!", "danger")
+            return redirect(url_for("upload2"))
+
+        pdf_file = request.files["pdf"]
+        pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(pdf_file.filename))
+        pdf_file.save(pdf_path)
+        session['pdf_path'] = pdf_path
+        return render_template("upload2.html", username=session['username'], pdf_url=pdf_path)
+    
+    return render_template("upload2.html", username=session['username'])
+
+@app.route('/sign_pdf', methods=['POST'])
+def sign_pdf():
+    if 'username' not in session or 'pdf_path' not in session:
+        return jsonify({"error": "Session expired. Please upload again."}), 400
+    
+    data = request.json
+    x, y = data['x'], data['y']
+    output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_custom.pdf")
+    add_signature_to_pdf(session['pdf_path'], session['signature'], output_pdf, (x, y))
+    return send_file(output_pdf, as_attachment=True)
 
 def get_signature_position(position):
     positions = {
         "Staff": (90, 405),
-        "Manager": (240, 405),
-        "Director": (370, 405),
-        "EVGM": (500, 405)
+        "Manager": (120, 405),
+        "Director": (150, 405),
+        "EVGM": (180, 405)
     }
     return positions.get(position, (90, 405))
 
@@ -135,8 +169,8 @@ def add_signature_to_pdf(pdf_path, sig_path, output_pdf, position, page_number=0
     img_rect = fitz.Rect(position[0], position[1], position[0] + new_width, position[1] + new_height)
     page.insert_image(img_rect, filename=resized_sig_path)
 
-    timestamp = datetime.datetime.now().strftime(" %H:%M %d-%m-%Y")
-    page.insert_text((position[0] - new_width/2, position[1] + new_height + 10), f" {timestamp}", fontsize=10, color=(0, 0, 0))
+    timestamp = datetime.datetime.now().strftime(" %H:%M:%S\n %d-%m-%Y")
+    page.insert_text((position[0] , position[1] + new_height + 10), f" {timestamp}", fontsize=10, color=(0, 0, 0))
 
     doc.save(output_pdf)
     doc.close()
