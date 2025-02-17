@@ -136,9 +136,9 @@ def sign_pdf():
 def get_signature_position(position):
     positions = {
         "Staff": (90, 405),
-        "Manager": (120, 405),
-        "Director": (150, 405),
-        "EVGM": (180, 405)
+        "Manager": (220, 405),
+        "Director": (370, 405),
+        "EVGM": (500, 405)
     }
     return positions.get(position, (90, 405))
 
