@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        #pdf-container { border: 1px solid black; width: 100%; height: 600px; overflow: auto; position: relative; }
+        canvas { cursor: crosshair; }
+        #image-preview { max-width: 100px; max-height: 100px; display: none; }
+    </style>
+</head>
+<body>
+    <h2>Upload PDF và Chỉnh sửa</h2>
+
+    <input type="file" id="pdf-upload" accept="application/pdf">
+    <button onclick="uploadPDF()">Tải PDF</button>
+
+    <input type="file" id="image-upload" accept="image/*">
+    <button onclick="uploadImage()">Tải Ảnh</button>
+    <img id="image-preview">
+
+    <div id="pdf-container"></div>
+
+    <button onclick="downloadPDF()">Tải PDF đã chỉnh sửa</button>
+
+    <script>
+        let pdfUrl = null;
+        let imageUrl = null;
+        let pdfDoc = null;
+
+        function uploadPDF() {
+            let formData = new FormData();
+            formData.append("file", document.getElementById("pdf-upload").files[0]);
+
+            fetch("/upload_pdf", { method: "POST", body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.pdf_url) {
+                    pdfUrl = data.pdf_url;
+                    loadPDF(pdfUrl);
+                }
+            });
+        }
+
+        function uploadImage() {
+            let formData = new FormData();
+            formData.append("file", document.getElementById("image-upload").files[0]);
+
+            fetch("/upload_image", { method: "POST", body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.image_url) {
+                    imageUrl = data.image_url;
+                    document.getElementById("image-preview").src = imageUrl;
+                    document.getElementById("image-preview").style.display = "block";
+                }
+            });
+        }
+
+        function loadPDF(url) {
+            pdfjsLib.getDocument(url).promise.then(doc => {
+                pdfDoc = doc;
+                document.getElementById("pdf-container").innerHTML = "";
+                for (let i = 0; i < doc.numPages; i++) {
+                    renderPage(i + 1);
+                }
+            });
+        }
+
+        function renderPage(pageNumber) {
+            pdfDoc.getPage(pageNumber).then(page => {
+                let canvas = document.createElement("canvas");
+                let context = canvas.getContext("2d");
+
+                canvas.addEventListener("click", (event) => {
+                    let rect = canvas.getBoundingClientRect();
+                    let x = event.clientX - rect.left;
+                    let y = event.clientY - rect.top;
+                    insertImage(pageNumber - 1, x, y, canvas.width, canvas.height);
+                });
+
+                document.getElementById("pdf-container").appendChild(canvas);
+                let viewport = page.getViewport({ scale: 1.5 });
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                let renderContext = { canvasContext: context, viewport: viewport };
+                page.render(renderContext);
+            });
+        }
+
+        function insertImage(page, x, y, canvasWidth, canvasHeight) {
+            fetch("/insert_image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ page: page, x: x, y: y, canvas_width: canvasWidth, canvas_height: canvasHeight })
+            }).then(response => response.json());
+        }
+
+        function downloadPDF() {
+            window.location.href = "/download_pdf";
+        }
+    </script>
+</body>
+</html>

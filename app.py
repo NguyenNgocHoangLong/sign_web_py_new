@@ -124,14 +124,27 @@ def upload2():
 
 @app.route('/sign_pdf', methods=['POST'])
 def sign_pdf():
-    if 'username' not in session or 'pdf_path' not in session:
-        return jsonify({"error": "Session expired. Please upload again."}), 400
-    
-    data = request.json
-    x, y = data['x'], data['y']
-    output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_custom.pdf")
-    add_signature_to_pdf(session['pdf_path'], session['signature'], output_pdf, (x, y))
-    return send_file(output_pdf, as_attachment=True)
+    if 'username' not in session:
+        return jsonify({"error": "Bạn chưa đăng nhập"}), 401
+
+    if 'pdf' not in request.files or 'x' not in request.form or 'y' not in request.form:
+        return jsonify({"error": "Dữ liệu không hợp lệ"}), 400
+
+    pdf_file = request.files['pdf']
+    x, y = float(request.form['x']), float(request.form['y'])
+
+    pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(pdf_file.filename))
+    pdf_file.save(pdf_path)
+
+    if not session.get('signature'):
+        return jsonify({"error": "Chưa có chữ ký"}), 400
+
+    signature_path = session['signature']
+    output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_" + pdf_file.filename)
+
+    add_signature_to_pdf_1(pdf_path, signature_path, output_pdf, (x, y))
+
+    return send_file(output_pdf, as_attachment=True, mimetype='application/pdf')
 
 def get_signature_position(position):
     positions = {
@@ -174,6 +187,36 @@ def add_signature_to_pdf(pdf_path, sig_path, output_pdf, position, page_number=0
 
     doc.save(output_pdf)
     doc.close()
+
+def add_signature_to_pdf_1(pdf_path, sig_path, output_pdf, position, page_number=0):
+    doc = fitz.open(pdf_path)
+    page = doc[page_number]
+
+    sig_img = Image.open(sig_path)
+    sig_width, sig_height = sig_img.size
+    scale_factor = 34 / sig_height
+    new_width, new_height = int(sig_width * scale_factor), 34
+    sig_img = sig_img.resize((new_width, new_height), Image.LANCZOS)
+
+    img_rect = fitz.Rect(position[0], position[1], position[0] + new_width, position[1] + new_height)
+    page.insert_image(img_rect, filename=sig_path)
+
+    timestamp = datetime.datetime.now().strftime(" %H:%M:%S\n %d-%m-%Y")
+    page.insert_text((position[0] , position[1] + new_height + 10), f" {timestamp}", fontsize=10, color=(0, 0, 0))
+
+    try:
+        doc.save(output_pdf)
+        doc.close()
+    except Exception as e:
+        print(f"Lỗi khi lưu PDF: {e}")
+    # Kiểm tra nếu file PDF có thể mở được
+    try:
+        with fitz.open(output_pdf) as test_pdf:
+            if len(test_pdf) == 0:
+                print("Lỗi: File PDF bị trống!")
+    except Exception as e:
+        print(f"Lỗi khi mở file PDF: {e}")
+
 
 if __name__ == '__main__':
     init_db()

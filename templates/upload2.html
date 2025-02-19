@@ -3,53 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ký PDF với vị trí tùy chỉnh</title>
-    <script>
-        function setSignaturePosition(event) {
-            let rect = event.target.getBoundingClientRect();
-            let x = event.clientX - rect.left;
-            let y = event.clientY - rect.top;
-            document.getElementById("x_pos").value = x;
-            document.getElementById("y_pos").value = y;
+    <title>Ký tài liệu PDF</title>
+    <script src="https://mozilla.github.io/pdf.js/build/pdf.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
         }
-
-        function submitSignature() {
-            let x = document.getElementById("x_pos").value;
-            let y = document.getElementById("y_pos").value;
-
-            fetch("{{ url_for('sign_pdf') }}", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ x: x, y: y })
-            }).then(response => response.blob())
-              .then(blob => {
-                  let link = document.createElement("a");
-                  link.href = URL.createObjectURL(blob);
-                  link.download = "signed_custom.pdf";
-                  link.click();
-              });
+        canvas {
+            width: 75%;
+            height: auto;
+            border: 1px solid black;
+            cursor: crosshair;
+            margin-top: 20px;
         }
-    </script>
+        #upload-section, #pdf-section {
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
-    <h2>Xin chào {{ username }}! Hãy chọn vị trí ký</h2>
+    <h2>Chọn file PDF và vị trí ký</h2>
 
-    {% if pdf_url %}
-        <embed src="{{ pdf_url }}" type="application/pdf" width="600" height="800" onclick="setSignaturePosition(event)">
-        <br>
-        <input type="hidden" id="x_pos">
-        <input type="hidden" id="y_pos">
-        <button onclick="submitSignature()">Xác nhận ký</button>
-    {% else %}
-        <form method="POST" enctype="multipart/form-data">
-            <label>Chọn file PDF:</label>
-            <input type="file" name="pdf" accept="application/pdf" required>
-            <br><br>
-            <button type="submit">Tải lên</button>
-        </form>
-    {% endif %}
+    <div id="upload-section">
+        <input type="file" id="pdf-upload" accept="application/pdf">
+        <button onclick="loadPDF()">Tải lên</button>
+    </div>
 
-    <br>
-    <a href="{{ url_for('home') }}">Quay lại</a>
+    <div id="pdf-section">
+        <canvas id="pdf-canvas"></canvas>
+    </div>
+
+    <button onclick="signPDF()">Ký PDF</button>
+
+    <script>
+        let canvas = document.getElementById("pdf-canvas");
+        let ctx = canvas.getContext("2d");
+        let pdfDoc = null, pageNum = 1, scale = 1.5;
+        let selectedPosition = null;
+        let uploadedFile = null;
+
+        function loadPDF() {
+            let fileInput = document.getElementById("pdf-upload");
+            if (fileInput.files.length === 0) {
+                alert("Vui lòng chọn một file PDF.");
+                return;
+            }
+
+            uploadedFile = fileInput.files[0];
+            let fileReader = new FileReader();
+
+            fileReader.onload = function() {
+                let typedArray = new Uint8Array(this.result);
+                pdfjsLib.getDocument(typedArray).promise.then(pdf => {
+                    pdfDoc = pdf;
+                    renderPage(pageNum);
+                });
+            };
+
+            fileReader.readAsArrayBuffer(uploadedFile);
+        }
+
+        function renderPage(num) {
+            pdfDoc.getPage(num).then(page => {
+                let viewport = page.getViewport({ scale: scale });
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                let renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                page.render(renderContext);
+            });
+        }
+
+        canvas.addEventListener("click", function(event) {
+            let rect = canvas.getBoundingClientRect();
+            let x = event.clientX - rect.left;
+            let y = event.clientY - rect.top;
+            selectedPosition = { x, y };
+            alert(`Vị trí ký: (${x}, ${y})`);
+        });
+
+        function signPDF() {
+            if (!uploadedFile) {
+                alert("Vui lòng tải lên một file PDF.");
+                return;
+            }
+
+            if (!selectedPosition) {
+                alert("Hãy chọn vị trí trên PDF trước khi ký!");
+                return;
+            }
+
+            let formData = new FormData();
+            formData.append("pdf", uploadedFile);
+            formData.append("x", selectedPosition.x);
+            formData.append("y", selectedPosition.y);
+
+            fetch("/sign_pdf", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                let url = window.URL.createObjectURL(blob);
+                let a = document.createElement("a");
+                a.href = url;
+                a.download = "signed.pdf";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => console.error("Lỗi khi ký PDF:", error));
+        }
+    </script>
 </body>
 </html>
