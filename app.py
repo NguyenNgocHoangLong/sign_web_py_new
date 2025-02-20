@@ -115,12 +115,13 @@ def upload2():
             return redirect(url_for("upload2"))
 
         pdf_file = request.files["pdf"]
-        pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(pdf_file.filename))
+        pdf_path = os.path.join("static/uploads", secure_filename(pdf_file.filename))
+        os.makedirs("static/uploads", exist_ok=True)
         pdf_file.save(pdf_path)
         session['pdf_path'] = pdf_path
-        return render_template("upload2.html", username=session['username'], pdf_url=pdf_path)
+        return jsonify({"pdf_url": pdf_path})
     
-    return render_template("upload2.html", username=session['username'])
+    return render_template("upload2.html", username=session['username'], pdf_url=session.get('pdf_path'))
 
 @app.route('/sign_pdf', methods=['POST'])
 def sign_pdf():

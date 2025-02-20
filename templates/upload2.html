@@ -4,43 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ký tài liệu PDF</title>
-    <script src="https://mozilla.github.io/pdf.js/build/pdf.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
             margin: 20px;
         }
-        canvas {
-            width: 75%;
-            height: auto;
+        #pdf-container {
             border: 1px solid black;
-            cursor: crosshair;
-            margin-top: 20px;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            position: relative;
         }
-        #upload-section, #pdf-section {
-            margin-bottom: 20px;
+        canvas {
+            cursor: crosshair;
+            display: block;
+            margin: auto;
+            width: 100%; /* Hiển thị ngang với kích thước PDF */
+            height: 100%;
         }
     </style>
 </head>
 <body>
     <h2>Chọn file PDF và vị trí ký</h2>
 
-    <div id="upload-section">
+    <div>
         <input type="file" id="pdf-upload" accept="application/pdf">
         <button onclick="loadPDF()">Tải lên</button>
     </div>
 
-    <div id="pdf-section">
-        <canvas id="pdf-canvas"></canvas>
-    </div>
+    <div id="pdf-container"></div>
 
     <button onclick="signPDF()">Ký PDF</button>
 
     <script>
-        let canvas = document.getElementById("pdf-canvas");
-        let ctx = canvas.getContext("2d");
-        let pdfDoc = null, pageNum = 1, scale = 1.5;
+        let pdfDoc = null;
         let selectedPosition = null;
         let uploadedFile = null;
 
@@ -58,34 +59,39 @@
                 let typedArray = new Uint8Array(this.result);
                 pdfjsLib.getDocument(typedArray).promise.then(pdf => {
                     pdfDoc = pdf;
-                    renderPage(pageNum);
+                    document.getElementById("pdf-container").innerHTML = "";
+                    for (let i = 0; i < pdf.numPages; i++) {
+                        renderPage(i + 1);
+                    }
                 });
             };
 
             fileReader.readAsArrayBuffer(uploadedFile);
         }
 
-        function renderPage(num) {
-            pdfDoc.getPage(num).then(page => {
-                let viewport = page.getViewport({ scale: scale });
+        function renderPage(pageNumber) {
+            pdfDoc.getPage(pageNumber).then(page => {
+                let canvas = document.createElement("canvas");
+                let context = canvas.getContext("2d");
+
+                canvas.addEventListener("click", event => {
+                    let rect = canvas.getBoundingClientRect();
+                    let x = event.clientX - rect.left;
+                    let y = event.clientY - rect.top;
+                    selectedPosition = { x, y, page: pageNumber };
+                    alert(`Vị trí ký: Trang ${pageNumber}, (${x}, ${y})`);
+                });
+
+                document.getElementById("pdf-container").appendChild(canvas);
+                let viewport = page.getViewport({ scale: 1.5 });
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
+                canvas.style.width = `${viewport.width}px`; /* Đảm bảo chiều ngang phù hợp */
 
-                let renderContext = {
-                    canvasContext: ctx,
-                    viewport: viewport
-                };
+                let renderContext = { canvasContext: context, viewport: viewport };
                 page.render(renderContext);
             });
         }
-
-        canvas.addEventListener("click", function(event) {
-            let rect = canvas.getBoundingClientRect();
-            let x = event.clientX - rect.left;
-            let y = event.clientY - rect.top;
-            selectedPosition = { x, y };
-            alert(`Vị trí ký: (${x}, ${y})`);
-        });
 
         function signPDF() {
             if (!uploadedFile) {
@@ -100,6 +106,7 @@
 
             let formData = new FormData();
             formData.append("pdf", uploadedFile);
+            formData.append("page", selectedPosition.page);
             formData.append("x", selectedPosition.x);
             formData.append("y", selectedPosition.y);
 
