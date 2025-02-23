@@ -23,6 +23,13 @@ def init_db():
             Sign TEXT,
             Password TEXT
         )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS signed_invoices (
+            InvoiceID INTEGER PRIMARY KEY AUTOINCREMENT,
+            PDF_Name TEXT,
+            KhachID INTEGER,
+            Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(KhachID) REFERENCES users(KhachID)
+        )''')
         conn.commit()
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -65,7 +72,61 @@ def login():
                 session['position'] = user[1]
                 session['signature'] = user[2]
                 return redirect(url_for('home'))
+        flash("Sai thông tin đăng nhập!", "danger")
     return render_template('login.html')
+
+# Add a route for handling forgotten password
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email']
+        
+        with sqlite3.connect('users.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT Khach_Name FROM users WHERE Email = ?", (email,))
+            user = cursor.fetchone()
+            
+            if user:
+                new_password = "newpass123"  # For simplicity, a static password reset (you can generate a random one)
+                cursor.execute("UPDATE users SET Password = ? WHERE Email = ?", (new_password, email))
+                conn.commit()
+                flash(f"Mật khẩu mới của bạn là: {new_password}", "success")
+                return redirect(url_for('login'))
+            else:
+                flash("Email không tồn tại trong hệ thống!", "danger")
+                return redirect(url_for('forgot_password'))
+    
+    return render_template('forgot_password.html')
+
+@app.route('/change_password', methods=['GET', 'POST'])
+def change_password():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        current_password = request.form['current_password']
+        new_password = request.form['new_password']
+        confirm_password = request.form['confirm_password']
+        
+        if new_password != confirm_password:
+            flash("Mật khẩu mới không khớp!", "danger")
+            return redirect(url_for('change_password'))
+        
+        with sqlite3.connect('users.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT Password FROM users WHERE Khach_Name = ?", (session['username'],))
+            stored_password = cursor.fetchone()
+            
+            if stored_password and stored_password[0] == current_password:
+                cursor.execute("UPDATE users SET Password = ? WHERE Khach_Name = ?", (new_password, session['username']))
+                conn.commit()
+                flash("Đổi mật khẩu thành công!", "success")
+                return redirect(url_for('home'))
+            else:
+                flash("Mật khẩu hiện tại không đúng!", "danger")
+                return redirect(url_for('change_password'))
+    
+    return render_template('change_password.html', username=session['username'])
 
 @app.route('/home')
 def home():
@@ -104,6 +165,21 @@ def upload1():
     
     return render_template("upload1.html", username=session['username'])
 
+@app.route('/show_signed_files')
+def show_signed_files():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with sqlite3.connect('users.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''SELECT si.PDF_Name, u.Khach_Name, si.Timestamp
+                          FROM signed_invoices si
+                          JOIN users u ON si.KhachID = u.KhachID
+                          ORDER BY si.Timestamp DESC''')
+        signed_files = cursor.fetchall()
+    
+    return render_template('show_signed_files.html', signed_files=signed_files)
+
 @app.route('/upload2', methods=['GET', 'POST'])
 def upload2():
     if 'username' not in session:
@@ -134,18 +210,35 @@ def sign_pdf():
     pdf_file = request.files['pdf']
     x, y = float(request.form['x']), float(request.form['y'])
 
-    pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(pdf_file.filename))
+    pdf_filename = secure_filename(pdf_file.filename)
+    pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], pdf_filename)
     pdf_file.save(pdf_path)
 
     if not session.get('signature'):
         return jsonify({"error": "Chưa có chữ ký"}), 400
 
+    # Check if user has already signed this PDF
+    with sqlite3.connect('users.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT KhachID FROM users WHERE Khach_Name = ?", (session['username'],))
+        user_id = cursor.fetchone()
+        
+        if user_id:
+            cursor.execute("SELECT * FROM signed_invoices WHERE PDF_Name = ? AND KhachID = ?", (pdf_filename, user_id[0]))
+            if cursor.fetchone():
+                return jsonify({"error": "Bạn đã ký tài liệu này rồi!"}), 400
+        
+        # Record the signature
+        cursor.execute("INSERT INTO signed_invoices (PDF_Name, KhachID) VALUES (?, ?)", (pdf_filename, user_id[0]))
+        conn.commit()
+
     signature_path = session['signature']
-    output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_" + pdf_file.filename)
+    output_pdf = os.path.join(app.config["UPLOAD_FOLDER"], "signed_" + pdf_filename)
 
     add_signature_to_pdf_1(pdf_path, signature_path, output_pdf, (x, y))
 
     return send_file(output_pdf, as_attachment=True, mimetype='application/pdf')
+
 
 def get_signature_position(position):
     positions = {

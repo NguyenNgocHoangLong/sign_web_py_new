@@ -6,8 +6,10 @@
 </head>
 <body>
     <h2>Xin chào {{ username }}</h2>
-    <a href="{{ url_for('upload1') }}"><button>Upload1</button></a>
-    <a href="{{ url_for('upload2') }}"><button>Upload2</button></a>
+    <a href="{{ url_for('upload1') }}"><button>Vị trí mặc định</button></a>
+    <a href="{{ url_for('upload2') }}"><button>Vị trí tự chọn</button></a>
+    <a href="{{ url_for('show_signed_files') }}" class="btn btn-info"><button>Hiển thị danh sách tài liệu đã ký</button></a>
+    <a href="{{ url_for('change_password') }}" class="btn btn-warning"><button>Đổi mật khẩu</button></a>
     <a href="{{ url_for('login') }}"><button>Đăng xuất</button></a>
 </body>
 </html>

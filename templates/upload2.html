@@ -83,7 +83,7 @@
                 });
 
                 document.getElementById("pdf-container").appendChild(canvas);
-                let viewport = page.getViewport({ scale: 1.5 });
+                let viewport = page.getViewport({ scale: 1 });
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
                 canvas.style.width = `${viewport.width}px`; /* Đảm bảo chiều ngang phù hợp */
@@ -127,5 +127,6 @@
             .catch(error => console.error("Lỗi khi ký PDF:", error));
         }
     </script>
+    <a href="{{ url_for('home') }}"><button>Quay lại</button></a>
 </body>
 </html>
