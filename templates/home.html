@@ -9,7 +9,10 @@
     <a href="{{ url_for('upload1') }}"><button>Vị trí mặc định</button></a>
     <a href="{{ url_for('upload2') }}"><button>Vị trí tự chọn</button></a>
     <a href="{{ url_for('show_signed_files') }}" class="btn btn-info"><button>Hiển thị danh sách tài liệu đã ký</button></a>
-    <a href="{{ url_for('change_password') }}" class="btn btn-warning"><button>Đổi mật khẩu</button></a>
+    {% if is_admin %}
+        <a href="{{ url_for('register') }}"><button>Đăng ký</button></a>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-danger"><button>Quản lý tài khoản</button></a>
+    {% endif %}
     <a href="{{ url_for('login') }}"><button>Đăng xuất</button></a>
 </body>
 </html>

@@ -21,7 +21,8 @@ def init_db():
             Position TEXT,
             Email TEXT UNIQUE,
             Sign TEXT,
-            Password TEXT
+            Password TEXT,
+            Role TEXT DEFAULT 'User'
         )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS signed_invoices (
             InvoiceID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,8 +33,47 @@ def init_db():
         )''')
         conn.commit()
 
+def update_users_table():
+    with sqlite3.connect('users.db') as conn:
+        cursor = conn.cursor()
+        # Check if Role column already exists
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'Role' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN Role TEXT DEFAULT 'User'")
+            conn.commit()
+
+# Run update when app starts
+update_users_table()
+
+# Create default admin account if not exists
+with sqlite3.connect('users.db') as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE Role = 'Admin'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (Khach_Name, Position, Email, Sign, Password, Role) VALUES (?, ?, ?, ?, ?, ?)",
+                       ('Admin', 'Administrator', 'admin@example.com', '', 'admin123', 'Admin'))
+        conn.commit()
+
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if 'username' not in session or session.get('role') != 'Admin':
+        flash("Bạn không có quyền truy cập!", "danger")
+        return redirect(url_for('home'))
+
+    with sqlite3.connect('users.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT KhachID, Khach_Name, Position, Email, Role, Password FROM users")
+        users = cursor.fetchall()
+    
+    return render_template('admin_dashboard.html', users=users)
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    if 'username' not in session or session.get('role') != 'Admin':
+        flash("Chỉ có admin mới được phép đăng ký tài khoản mới!", "danger")
+        return redirect(url_for('login'))
+    
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
@@ -51,11 +91,12 @@ def register():
         
         with sqlite3.connect('users.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (Khach_Name, Position, Email, Sign, Password) VALUES (?, ?, ?, ?, ?)",
-                           (name, position, email, signature_path, password))
+            cursor.execute("INSERT INTO users (Khach_Name, Position, Email, Sign, Password, Role) VALUES (?, ?, ?, ?, ?, ?)",
+                           (name, position, email, signature_path, password, 'User'))
             conn.commit()
         flash("Đăng ký thành công!", "success")
         return redirect(url_for('login'))
+    
     return render_template('register.html')
 
 @app.route('/', methods=['GET', 'POST'])
@@ -65,15 +106,17 @@ def login():
         password = request.form['password']
         with sqlite3.connect('users.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT Khach_Name, Position, Sign FROM users WHERE Email = ? AND Password = ?", (email, password))
+            cursor.execute("SELECT Khach_Name, Position, Sign, Role FROM users WHERE Email = ? AND Password = ?", (email, password))
             user = cursor.fetchone()
             if user:
                 session['username'] = user[0]
                 session['position'] = user[1]
                 session['signature'] = user[2]
+                session['role'] = user[3]  # Save user role in session
                 return redirect(url_for('home'))
         flash("Sai thông tin đăng nhập!", "danger")
     return render_template('login.html')
+
 
 # Add a route for handling forgotten password
 @app.route('/forgot_password', methods=['GET', 'POST'])
@@ -100,10 +143,8 @@ def forgot_password():
 
 @app.route('/change_password', methods=['GET', 'POST'])
 def change_password():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
     if request.method == 'POST':
+        email = request.form['email']
         current_password = request.form['current_password']
         new_password = request.form['new_password']
         confirm_password = request.form['confirm_password']
@@ -114,25 +155,26 @@ def change_password():
         
         with sqlite3.connect('users.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT Password FROM users WHERE Khach_Name = ?", (session['username'],))
+            cursor.execute("SELECT Password FROM users WHERE Email = ?", (email,))
             stored_password = cursor.fetchone()
             
             if stored_password and stored_password[0] == current_password:
-                cursor.execute("UPDATE users SET Password = ? WHERE Khach_Name = ?", (new_password, session['username']))
+                cursor.execute("UPDATE users SET Password = ? WHERE Email = ?", (new_password, email))
                 conn.commit()
                 flash("Đổi mật khẩu thành công!", "success")
-                return redirect(url_for('home'))
+                return redirect(url_for('login'))
             else:
-                flash("Mật khẩu hiện tại không đúng!", "danger")
+                flash("Email hoặc mật khẩu hiện tại không đúng!", "danger")
                 return redirect(url_for('change_password'))
     
-    return render_template('change_password.html', username=session['username'])
+    return render_template('change_password.html')
 
 @app.route('/home')
 def home():
     if 'username' not in session:
         return redirect(url_for('login'))
-    return render_template("home.html", username=session['username'])
+    is_admin = session.get('role') == 'Admin'
+    return render_template("home.html", username=session['username'], is_admin=is_admin)
 
 @app.route('/upload1', methods=['GET', 'POST'])
 def upload1():
