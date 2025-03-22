@@ -169,6 +169,18 @@ def change_password():
     
     return render_template('change_password.html')
 
+@app.route('/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    if 'username' not in session or session.get('role') != 'Admin':
+        return jsonify({"error": "Bạn không có quyền thực hiện thao tác này!"}), 403
+
+    with sqlite3.connect('users.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users WHERE KhachID = ?", (user_id,))
+        conn.commit()
+    
+    return jsonify({"success": True})
+
 @app.route('/home')
 def home():
     if 'username' not in session:

@@ -28,6 +28,10 @@
                 <td>{{ user[3] }}</td>
                 <td>{{ user[4] }}</td>
                 <td>{{ user[5] }}</td>
+                <th>Hành động</th>
+                <td>
+                    <button class="delete-btn" data-id="{{ user[0] }}">Xóa</button>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -37,6 +41,24 @@
             $('#usersTable').DataTable({
                 "order": [[0, "asc"]],
                 "pageLength": 20
+            });
+        });
+    </script>
+    <script>
+        $(document).ready(function() {
+            $('#usersTable').DataTable();
+        
+            $(".delete-btn").click(function() {
+                let userId = $(this).data("id");
+                if (confirm("Bạn có chắc chắn muốn xóa người dùng này?")) {
+                    $.post(`/delete_user/${userId}`, function(response) {
+                        if (response.success) {
+                            location.reload();
+                        } else {
+                            alert("Không thể xóa người dùng!");
+                        }
+                    });
+                }
             });
         });
     </script>
